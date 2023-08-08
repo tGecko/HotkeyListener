@@ -11,13 +11,13 @@
 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-using System.Windows.Forms;
 using System.Windows.Automation;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System.Windows.Forms;
 
 namespace WK.Libraries.HotkeyListenerNS.Helpers
 {
@@ -58,7 +58,7 @@ namespace WK.Libraries.HotkeyListenerNS.Helpers
         public TextSelectionReader()
         {
             _selectionMethods = new Func<string>[] {
-                () => this.GetTextFromAutomationElement(),
+              //  () => this.GetTextFromAutomationElement(),
                 () => this.GetTextFromWin32Api(),
                 () => this.GetTextViaClipboard(),
             };
@@ -70,7 +70,7 @@ namespace WK.Libraries.HotkeyListenerNS.Helpers
 
         // Array of methods to use to try and get the selected text
         private Func<string>[] _selectionMethods;
-        
+
         #endregion
 
         #region Methods
@@ -91,7 +91,7 @@ namespace WK.Libraries.HotkeyListenerNS.Helpers
                 foreach (var action in _selectionMethods)
                 {
                     var result = action.Invoke();
-                    
+
                     if (result != null)
                         return result;
                 }
@@ -220,97 +220,97 @@ namespace WK.Libraries.HotkeyListenerNS.Helpers
             return string.Empty;
         }
 
-        /// <summary>
-        /// Uses P/Invokes to try and retrieve selected text from the active control.
-        /// </summary>
-        /// <returns>
-        /// Returns the selected text from the active control or null when the API calls
-        /// fail to retrieve the text.
-        /// </returns>
-        private string GetTextFromWin32Api()
+    /// <summary>
+    /// Uses P/Invokes to try and retrieve selected text from the active control.
+    /// </summary>
+    /// <returns>
+    /// Returns the selected text from the active control or null when the API calls
+    /// fail to retrieve the text.
+    /// </returns>
+    private string GetTextFromWin32Api()
+    {
+        try
         {
-            try
+            // Get active window's control hWnd.
+            int activeWinPtr = GetForegroundWindow().ToInt32();
+            int activeThreadId = 0;
+            int processId;
+
+            activeThreadId = GetWindowThreadProcessId(activeWinPtr, out processId);
+            int currentThreadId = GetCurrentThreadId();
+
+            if (activeThreadId != currentThreadId)
+                AttachThreadInput(activeThreadId, currentThreadId, true);
+
+            IntPtr activeCtrlId = GetFocus();
+
+            // Get total text length.
+            int textlength = (int)SendMessage(activeCtrlId, WM_GETTEXTLENGTH, IntPtr.Zero, IntPtr.Zero) + 1;
+
+            // Have any text at all?
+            if (textlength > 0)
             {
-                // Get active window's control hWnd.
-                int activeWinPtr = GetForegroundWindow().ToInt32();
-                int activeThreadId = 0;
-                int processId;
+                // Get selection.
+                int selstart;
+                int selend;
 
-                activeThreadId = GetWindowThreadProcessId(activeWinPtr, out processId);
-                int currentThreadId = GetCurrentThreadId();
+                SendMessage(activeCtrlId, EM_GETSEL, out selstart, out selend);
 
-                if (activeThreadId != currentThreadId)
-                    AttachThreadInput(activeThreadId, currentThreadId, true);
+                StringBuilder sb = new StringBuilder(textlength);
+                SendMessage(activeCtrlId, WM_GETTEXT, (IntPtr)textlength, sb);
 
-                IntPtr activeCtrlId = GetFocus();
+                // Slice out selection.
+                string value = sb.ToString();
+                sb.Clear();
 
-                // Get total text length.
-                int textlength = (int)SendMessage(activeCtrlId, WM_GETTEXTLENGTH, IntPtr.Zero, IntPtr.Zero) + 1;
-
-                // Have any text at all?
-                if (textlength > 0)
-                {
-                    // Get selection.
-                    int selstart;
-                    int selend;
-
-                    SendMessage(activeCtrlId, EM_GETSEL, out selstart, out selend);
-
-                    StringBuilder sb = new StringBuilder(textlength);
-                    SendMessage(activeCtrlId, WM_GETTEXT, (IntPtr)textlength, sb);
-
-                    // Slice out selection.
-                    string value = sb.ToString();
-                    sb.Clear();
-
-                    if ((value.Length > 0) && (selend - selstart > 0) && (selstart < value.Length) && (selend < value.Length))
-                        return value.Substring(selstart, selend - selstart);
-                }
+                if ((value.Length > 0) && (selend - selstart > 0) && (selstart < value.Length) && (selend < value.Length))
+                    return value.Substring(selstart, selend - selstart);
             }
-            catch (Exception) { }
-            
-            // Failed. Return empty string.
-            return string.Empty;
         }
+        catch (Exception) { }
 
-        #region Win32 APIs
-
-        #region SendMessage Overloads
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern bool SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, StringBuilder lParam);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wparam, IntPtr lparam);
-
-        [DllImport("user32.dll")]
-        private static extern int SendMessage(IntPtr hWnd, uint Msg, out int wParam, out int lParam);
-
-        #endregion
-
-        private const uint WM_GETTEXTLENGTH = 0x000E;
-        private const uint WM_GETTEXT = 0x000D;
-        private const uint EM_GETSEL = 0xB0;
-
-        [DllImport("user32.dll", ExactSpelling = true)]
-        private static extern IntPtr GetForegroundWindow();
-
-        [DllImport("user32.dll", ExactSpelling = true)]
-        private static extern IntPtr GetFocus();
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern int GetWindowThreadProcessId(int handle, out int processId);
-
-        [DllImport("user32", SetLastError = true, ExactSpelling = true)]
-        private static extern int AttachThreadInput(int idAttach, int idAttachTo, bool fAttach);
-
-        [DllImport("kernel32.dll")]
-        private static extern int GetCurrentThreadId();
-
-        #endregion
-
-        #endregion
-
-        #endregion
+        // Failed. Return empty string.
+        return string.Empty;
     }
+
+    #region Win32 APIs
+
+    #region SendMessage Overloads
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern bool SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, StringBuilder lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wparam, IntPtr lparam);
+
+    [DllImport("user32.dll")]
+    private static extern int SendMessage(IntPtr hWnd, uint Msg, out int wParam, out int lParam);
+
+    #endregion
+
+    private const uint WM_GETTEXTLENGTH = 0x000E;
+    private const uint WM_GETTEXT = 0x000D;
+    private const uint EM_GETSEL = 0xB0;
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    private static extern IntPtr GetFocus();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetWindowThreadProcessId(int handle, out int processId);
+
+    [DllImport("user32", SetLastError = true, ExactSpelling = true)]
+    private static extern int AttachThreadInput(int idAttach, int idAttachTo, bool fAttach);
+
+    [DllImport("kernel32.dll")]
+    private static extern int GetCurrentThreadId();
+
+    #endregion
+
+    #endregion
+
+    #endregion
+}
 }
